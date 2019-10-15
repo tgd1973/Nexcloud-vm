@@ -15,6 +15,54 @@ Server installation. Simplified. :cloud:
 
 --------------------
 
+## Build your own Nextcloud VM
+How to build your own Nextcloud VM from scratch
+25th April 2019, 20:21 — revised 24th September 2019, 18:57
+STATUS
+ 
+CATEGORY / TAG
+Unassigned
+1 Links
+  
+Click here to if you rather want to use the VM.
+Click here to view machine configuration when everything is setup.
+2 Digitalocean example
+  
+DigitalOcean example: https://youtu.be/LlqY5Y6P9Oc
+The script will mount and format the drive. Please select Manually Format & Mount when adding the second volume.
+
+3 Minimum System Requirements
+  
+A clean Ubuntu Server 18.04.X using the alternative installer
+OpenSSH (preferred)
+20 GB HDD for OS
+XX GB HDD for DATA (/mnt/ncdata)
+Absolute minimum is 1 vCPU and 2 GB RAM (4 GB minimum if you are running OnlyOffice)
+A working internet connection (the script needs it to download files and variables)
+VMware Player (fully tested with Hyper-V and KVM as well). It would also work on a bare-metal server/computer/laptop of course.
+3.1 Recomended
+  
+DHCP available
+40 GB HDD for OS
+4 vCPU
+4 GB RAM
+Ports 80 and 443 open to the server. Here’s why port 80 is recomended. Yes: the VM handles redirection to 443.
+4 Installation overview
+  
+Two scripts run consecutively to create your Nextcloud instance, seperated by a reboot. The first script (nextcloud_install_production.sh) is used to to the main installation, e.g. when installing it on a new server. It helps you choose and install features, create your user account, and then reboots. After the VM reboots and you login with the new user name you created, the second script (nextcloud-startup-script.sh) completes setup.
+
+5 Installation: Step-by-step
+  
+STEP 1 — Download and execute the latest Nextcloud VM installer script using super user do (sudo):
+sudo bash -c "$(wget -q -O - https://raw.githubusercontent.com/nextcloud/vm/master/nextcloud_install_production.sh)"
+After the first script completes …
+STEP 2 — The VM automatically reboots.
+STEP 3 — Login with your new user name locally or remotely (via CLI: ssh <user>@IP-ADDRESS). The second script executes and completes installation.
+AN IMPORTANT NOTE
+*If the VM automatically runs as root after rebooting, press CTRL+C to abort nextcloud-startup-script.sh. Then manually run the startup script as your newly-created user:* sudo -u <user> sudo bash /var/scripts/nextcloud-startup-script.sh — Setup is not finished after running the first script. Both must execute consecutively.
+
+--------------------
+
 ## Support the development
 * [Create a PR](https://help.github.com/articles/creating-a-pull-request/) and improve the code
 * Report [your issue](https://github.com/nextcloud/vm/issues/new)
