@@ -50,8 +50,11 @@ Two scripts run consecutively to create your Nextcloud instance, seperated by a 
 STEP 1 — Download and execute the latest Nextcloud VM installer script using super user do (sudo):
 sudo bash -c "$(wget -q -O - https://raw.githubusercontent.com/nextcloud/vm/master/nextcloud_install_production.sh)"
 After the first script completes …
+
 STEP 2 — The VM automatically reboots.
+
 STEP 3 — Login with your new user name locally or remotely (via CLI: ssh <user>@IP-ADDRESS). The second script executes and completes installation.
+  
 AN IMPORTANT NOTE
 *If the VM automatically runs as root after rebooting, press CTRL+C to abort nextcloud-startup-script.sh. Then manually run the startup script as your newly-created user:* sudo -u <user> sudo bash /var/scripts/nextcloud-startup-script.sh — Setup is not finished after running the first script. Both must execute consecutively.
 
