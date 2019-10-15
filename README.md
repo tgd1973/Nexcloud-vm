@@ -18,20 +18,13 @@ Server installation. Simplified. :cloud:
 ## Build your own Nextcloud VM
 How to build your own Nextcloud VM from scratch
 25th April 2019, 20:21 — revised 24th September 2019, 18:57
-STATUS
- 
-CATEGORY / TAG
-Unassigned
-1 Links
-  
-Click here to if you rather want to use the VM.
-Click here to view machine configuration when everything is setup.
-2 Digitalocean example
+
+1. Digitalocean example
   
 DigitalOcean example: https://youtu.be/LlqY5Y6P9Oc
 The script will mount and format the drive. Please select Manually Format & Mount when adding the second volume.
 
-3 Minimum System Requirements
+2. Minimum System Requirements
   
 A clean Ubuntu Server 18.04.X using the alternative installer
 OpenSSH (preferred)
@@ -40,18 +33,19 @@ XX GB HDD for DATA (/mnt/ncdata)
 Absolute minimum is 1 vCPU and 2 GB RAM (4 GB minimum if you are running OnlyOffice)
 A working internet connection (the script needs it to download files and variables)
 VMware Player (fully tested with Hyper-V and KVM as well). It would also work on a bare-metal server/computer/laptop of course.
-3.1 Recomended
+2.1  Recomended
   
 DHCP available
 40 GB HDD for OS
 4 vCPU
 4 GB RAM
 Ports 80 and 443 open to the server. Here’s why port 80 is recomended. Yes: the VM handles redirection to 443.
-4 Installation overview
+
+3. Installation overview
   
 Two scripts run consecutively to create your Nextcloud instance, seperated by a reboot. The first script (nextcloud_install_production.sh) is used to to the main installation, e.g. when installing it on a new server. It helps you choose and install features, create your user account, and then reboots. After the VM reboots and you login with the new user name you created, the second script (nextcloud-startup-script.sh) completes setup.
 
-5 Installation: Step-by-step
+4. Installation: Step-by-step
   
 STEP 1 — Download and execute the latest Nextcloud VM installer script using super user do (sudo):
 sudo bash -c "$(wget -q -O - https://raw.githubusercontent.com/nextcloud/vm/master/nextcloud_install_production.sh)"
