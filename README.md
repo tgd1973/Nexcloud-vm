@@ -55,7 +55,7 @@ STEP 2 — The VM automatically reboots.
 
 STEP 3 — Login with your new user name locally or remotely (via CLI: ssh <user>@IP-ADDRESS). The second script executes and completes installation.
   
-AN IMPORTANT NOTE
+AN IMPORTANT NOTE:
 *If the VM automatically runs as root after rebooting, press CTRL+C to abort nextcloud-startup-script.sh. Then manually run the startup script as your newly-created user:* sudo -u <user> sudo bash /var/scripts/nextcloud-startup-script.sh — Setup is not finished after running the first script. Both must execute consecutively.
 
 --------------------
