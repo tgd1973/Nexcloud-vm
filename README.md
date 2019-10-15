@@ -73,7 +73,7 @@ AN IMPORTANT NOTE:
 * [FAQ](https://docs.hanssonit.se/s/bj101nihv0jgrmfm09f0/faq/d/bj101pihv0jgrmfm0a10/nextcloud-vm?currentPageId=bj101sqhv0jgrmfm0a1g) (Frequently Asked Questions)
 * [Machine configuration](https://docs.hanssonit.se/s/W6fMouPiqQz3_Mog/virtual-machines-vm/d/W7Du9uPiqQz3_Mr1/machine-setup-nextcloud-vm) (of the released version)
 
-## I want to test a Release Candidate (RC), or Beta!
+## If You want to test a Release Candidate (RC), or Beta!
 No problem, brave explorer! We made it simple. 
 
 In some cases we do pre-releases of the VM as well. Those can be found in the [TESTING](https://cloud.hanssonit.se/s/zjsqkrSpzqJGE9N?path=%2FTESTING) folder on the download server. If you want to try the latest version yourself, just follow the steps below:
