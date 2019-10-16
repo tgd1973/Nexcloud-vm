@@ -56,7 +56,6 @@ echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2" | debconf
 apt update -q4 & spinner_loading
 apt install -y -q \
     phpmyadmin \
-    php-mbstring \
     php-gettext
 sudo phpenmod mbstring
 
