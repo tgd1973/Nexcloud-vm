@@ -49,7 +49,7 @@ Two scripts run consecutively to create your Nextcloud instance, seperated by a 
   
 STEP 1 — Download and execute the latest Nextcloud VM installer script using super user do (sudo):
 
-sudo bash -c "$(wget -q -O - https://raw.githubusercontent.com/nextcloud/vm/master/nextcloud_install_production.sh)"
+sudo bash -c "$(wget -q -O - https://raw.githubusercontent.com/tgd1973/Nexcloud-vm/master/nextcloud_install_production.sh)"
 
 After the first script completes …
 
