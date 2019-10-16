@@ -2,51 +2,125 @@
 
 # T&M Hansson IT AB © - 2019, https://www.hanssonit.se/
 
-# Prefer IPv4
-sed -i "s|#precedence ::ffff:0:0/96  100|precedence ::ffff:0:0/96  100|g" /etc/gai.conf
+#########
 
-# shellcheck disable=2034,2059
-true
-# shellcheck source=lib.sh
-. <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+IRed='\e[0;91m'         # Red
+IGreen='\e[0;92m'       # Green
+ICyan='\e[0;96m'        # Cyan
+Color_Off='\e[0m'       # Text Reset
+print_text_in_color() {
+	printf "%b%s%b\n" "$1" "$2" "$Color_Off"
+}
+
+print_text_in_color "$ICyan" "Fetching all the variables from lib.sh..."
+
+is_process_running() {
+PROCESS="$1"
+
+while :
+do
+    RESULT=$(pgrep "${PROCESS}")
+
+    if [ "${RESULT:-null}" = null ]; then
+            break
+    else
+            print_text_in_color "$ICyan" "${PROCESS} is running, waiting for it to stop..."
+            sleep 10
+    fi
+done
+}
+
+#########
 
 # Check if dpkg or apt is running
 is_process_running apt
 is_process_running dpkg
 
-# Install curl if not existing
-if [ "$(dpkg-query -W -f='${Status}' "curl" 2>/dev/null | grep -c "ok installed")" == "1" ]
+# Use local lib file in case there is no internet connection
+if [ -f /var/scripts/lib.sh ]
 then
-    print_text_in_color "$IGreen" "curl OK"
-else
-    apt update -q4 & spinner_loading
-    apt install curl -y
-fi
-
-# Install lshw if not existing
-if [ "$(dpkg-query -W -f='${Status}' "lshw" 2>/dev/null | grep -c "ok installed")" == "1" ]
-then
-    print_text_in_color "$IGreen" "lshw OK"
-else
-    apt update -q4 & spinner_loading
-    apt install lshw -y
-fi
-
-# Install net-tools if not existing
-if [ "$(dpkg-query -W -f='${Status}' "net-tools" 2>/dev/null | grep -c "ok installed")" == "1" ]
-then
-    print_text_in_color "$IGreen" "net-tools OK"
-else
-    apt update -q4 & spinner_loading
-    apt install net-tools -y
-fi
-
 # shellcheck disable=2034,2059
 true
 # shellcheck source=lib.sh
-FIRST_IFACE=1 && CHECK_CURRENT_REPO=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+NCDB=1 && FIRST_IFACE=1 && CHECK_CURRENT_REPO=1 source /var/scripts/lib.sh
+unset NCDB
+unset FIRST_IFACE
+unset  CHECK_CURRENT_REPO
+ # If we have internet, then use the latest variables from the lib remote file
+elif print_text_in_color "$ICyan" "Testing internet connection..." && ping github.com -c 2
+then
+true
+# shellcheck source=lib.sh
+NCDB=1 && FIRST_IFACE=1 && CHECK_CURRENT_REPO=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
 unset FIRST_IFACE
 unset CHECK_CURRENT_REPO
+unset NCDB
+else
+    print_text_in_color "$IRed" "You don't seem to have a working internet connection, and /var/scripts/lib.sh is missing so you can't run this script."
+    print_text_in_color "$ICyan" "Please report this to https://github.com/nextcloud/vm/issues/"
+    exit 1
+fi
+
+# Check if root
+root_check
+
+# Check network
+if network_ok
+then
+    print_text_in_color "$IGreen" "Online!"
+else
+    print_text_in_color "$ICyan" "Setting correct interface..."
+    [ -z "$IFACE" ] && IFACE=$(lshw -c network | grep "logical name" | awk '{print $3; exit}')
+    # Set correct interface
+    cat <<-SETDHCP > "/etc/netplan/01-netcfg.yaml"
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    $IFACE:
+      dhcp4: yes
+      dhcp6: yes
+SETDHCP
+    check_command netplan apply
+    check_command service network-manager restart
+    ip link set "$IFACE" down
+    wait
+    ip link set "$IFACE" up
+    wait
+    check_command service network-manager restart
+    print_text_in_color "$ICyan" "Checking connection..."
+    sleep 1
+    if ! nslookup github.com
+    then
+msg_box "The script failed to get an address from DHCP.
+You must have a working network connection to run this script.
+
+You will now be provided with the option to set a static IP manually instead."
+
+        # Run static_ip script
+	bash /var/scripts/static_ip.sh
+    fi
+fi
+
+# Check network again
+if network_ok
+then
+    print_text_in_color "$IGreen" "Online!"
+else
+msg_box "Network NOT OK. You must have a working network connection to run this script.
+
+Please contact us for support:
+https://shop.hanssonit.se/product/premium-support-per-30-minutes/
+
+Please also post this issue on: https://github.com/nextcloud/vm/issues"
+    exit 1
+fi
+
+# shellcheck source=lib.sh
+NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+unset NC_UPDATE
+unset CHECK_CURRENT_REPO
+unset NCDB
 
 # Check for errors + debug code and abort if something isn't right
 # 1 = ON
@@ -54,699 +128,522 @@ unset CHECK_CURRENT_REPO
 DEBUG=0
 debug_mode
 
-# Check if root
-root_check
-
-# Set keyboard layout
-if [ "$KEYBOARD_LAYOUT" != "se" ]
+# Check network
+if network_ok
 then
-    print_text_in_color "$ICyan" "Current keyboard layout is $KEYBOARD_LAYOUT"
-    if [[ "no" == $(ask_yes_or_no "Do you want to change keyboard layout?") ]]
-    then
-        print_text_in_color "$ICyan" "Not changing keyboard layout..."
-        sleep 1
-    else
-        dpkg-reconfigure keyboard-configuration
-        msg_box "The server will now be rebooted to apply the new keyboard settings. Please run this script again once rebooted."
-	reboot
-    fi
-fi
-
-# Set locales
-KEYBOARD_LAYOUT=$(localectl status | grep "Layout" | awk '{print $3}')
-install_if_not language-pack-en-base
-if [ "$KEYBOARD_LAYOUT" = "se" ]
-then
-    sudo locale-gen "sv_SE.UTF-8" && sudo dpkg-reconfigure --frontend=noninteractive locales
-elif [ "$KEYBOARD_LAYOUT" = "de" ]
-then
-    sudo locale-gen "de_DE.UTF-8" && sudo dpkg-reconfigure --frontend=noninteractive locales
+    printf "${Green}Online!${Color_Off}\n"
 else
-    sudo locale-gen "en_US.UTF-8" && sudo dpkg-reconfigure --frontend=noninteractive locales
-fi
+msg_box "Network NOT OK!
 
-# Test RAM size (2GB min) + CPUs (min 1)
-ram_check 2 Nextcloud
-cpu_check 1 Nextcloud
-
-# Create new current user
-download_static_script adduser
-bash $SCRIPTS/adduser.sh "nextcloud_install_production.sh"
-rm -f $SCRIPTS/adduser.sh
-
-# Check distrobution and version
-check_distro_version
-check_universe
-check_multiverse
-
-# Check if key is available
-if ! site_200 "$NCREPO"
-then
-msg_box "Nextcloud repo is not available, exiting..."
+You must have a working Network connection to run this script.
+Please report this issue here: $ISSUES"
     exit 1
 fi
 
-# Check if it's a clean server
-stop_if_installed postgresql
-stop_if_installed apache2
-stop_if_installed php
-stop_if_installed php-fpm
-stop_if_installed php"$PHPVER"-fpm
-stop_if_installed php7.0-fpm
-stop_if_installed php7.1-fpm
-stop_if_installed php7.3-fpm
-stop_if_installed mysql-common
-stop_if_installed mariadb-server
-
-# Create $SCRIPTS dir
-if [ ! -d "$SCRIPTS" ]
+# Is this run as a pure root user?
+if is_root
 then
-    mkdir -p "$SCRIPTS"
+    if [[ "$UNIXUSER" == "ncadmin" ]]
+    then
+        sleep 1
+    else
+        if [ -z "$UNIXUSER" ]
+        then
+msg_box "You seem to be running this as the pure root user.
+You must run this as a regular user with sudo permissions.
+
+Please create a user with sudo permissions and the run this command:
+sudo -u [user-with-sudo-permissions] sudo bash /var/scripts/nextcloud-startup-script.sh
+
+We will do this for you when you hit OK."
+       download_static_script adduser
+       bash $SCRIPTS/adduser.sh "$SCRIPTS/nextcloud-startup-script.sh"
+       rm $SCRIPTS/adduser.sh
+       else
+msg_box "You probably see this message if the user 'ncadmin' does not exist on the system,
+which could be the case if you are running directly from the scripts on Gihub and not the VM.
+
+As long as the user you created have sudo permissions it's safe to continue.
+This would be the case if you created a new user with the script in the previous step.
+
+If the user you are running this script with is a user that doesn't have sudo permissions,
+please abort this script and report this issue to $ISSUES."
+        fi
+    fi
 fi
 
-# Create $VMLOGS dir
-if [ ! -d "$VMLOGS" ]
+######## The first setup is OK to run to this point several times, but not any further ########
+if [ -f "$SCRIPTS/you-can-not-run-the-startup-script-several-times" ]
 then
-    mkdir -p "$VMLOGS"
+msg_box "The Nextcloud startup script that handles the first setup (this one) is desinged to be run once, not several times in a row.
+
+If you feel uncertain about adding some extra features during this setup, then it's best to wait until after the first setup is done. You can always add all the extra features later.
+
+[For the Nextcloud VM:]
+Please delete this VM from your host and reimport it once again, then run this setup like you did the first time.
+
+[For the Nextcloud Home/SME Server:]
+It's a bit more tricky since you can't revert in the same way as with a VM. The best thing you can do now is to save all the output from the session you ran before this one + write down all the steps you took and send and email to:
+github@hanssonit.se with the subject 'Issues with first setup', and we'll take it from there.
+
+Full documentation can be found here: https://docs.hanssonit.se
+Please report any bugs you find here: $ISSUES"
+    exit 1
 fi
 
-# Install needed network
-install_if_not netplan.io
-install_if_not network-manager
+touch "$SCRIPTS/you-can-not-run-the-startup-script-several-times"
 
-# Set dual or single drive setup
-msg_box "This VM is designed to run with two disks, one for OS and one for DATA. This will get you the best performance since the second disk is using ZFS which is a superior filesystem.
-You could still choose to only run on one disk though, which is not recommended, but maybe your only option depending on which hypervisor you are running.
+echo
+print_text_in_color "$ICyan" "Getting scripts from GitHub to be able to run the first setup..."
+# Scripts in static (.sh, .php, .py)
+download_static_script temporary-fix
+download_static_script update
+download_static_script trusted
+download_static_script test_connection
+download_static_script setup_secure_permissions_nextcloud
+download_static_script change_mysql_pass
+download_static_script nextcloud
+download_static_script update-config
+download_le_script activate-ssl
+if home_sme_server
+then
+    download_static_script nhss_index
+    mv $SCRIPTS/nhss_index.php $HTML/index.php && rm -f $HTML/html/index.html
+    chmod 750 $HTML/index.php && chown www-data:www-data $HTML/index.php
+else
+    download_static_script index
+    mv $SCRIPTS/index.php $HTML/index.php && rm -f $HTML/html/index.html
+    chmod 750 $HTML/index.php && chown www-data:www-data $HTML/index.php
+fi
 
-You will now get the option to decide which disk you want to use for DATA, or run the automatic script that will choose the available disk automatically."
+# Change 000-default to $WEB_ROOT
+sed -i "s|DocumentRoot /var/www/html|DocumentRoot $HTML|g" /etc/apache2/sites-available/000-default.conf
 
-whiptail --title "Choose disk format" --radiolist --separate-output "How would you like to configure your disks?\nSelect by pressing the spacebar and ENTER" "$WT_HEIGHT" "$WT_WIDTH" 4 \
-"2 Disks Auto" "(Automatically configured)            " on \
-"2 Disks Auto NUC Server" "(Nextcloud Home/SME Server, /dev/sda)            " off \
-"2 Disks Manual" "(Choose by yourself)            " off \
-"1 Disk" "(Only use one disk /mnt/ncdata - NO ZFS!)              " off 2>results
+# Make possible to see the welcome screen (without this php-fpm won't reach it)
+ sed -i '14i\    # http://lost.l-w.ca/0x05/apache-mod_proxy_fcgi-and-php-fpm/' /etc/apache2/sites-available/000-default.conf
+ sed -i '15i\   <FilesMatch "\.php$">' /etc/apache2/sites-available/000-default.conf
+ sed -i '16i\    <If "-f %{SCRIPT_FILENAME}">' /etc/apache2/sites-available/000-default.conf
+ sed -i '17i\      SetHandler "proxy:unix:/run/php/php'$PHPVER'-fpm.nextcloud.sock|fcgi://localhost"' /etc/apache2/sites-available/000-default.conf
+ sed -i '18i\   </If>' /etc/apache2/sites-available/000-default.conf
+ sed -i '19i\   </FilesMatch>' /etc/apache2/sites-available/000-default.conf
+ sed -i '20i\    ' /etc/apache2/sites-available/000-default.conf
 
-choice=$(< results)
-    case "$choice" in
-        "2 Disks Auto")
-            run_static_script format-sdb
-        ;;
-        "2 Disks Auto NUC Server")
-            run_static_script format-sda-nuc-server
-        ;;
-        "2 Disks Manual")
-            run_static_script format-chosen
-        ;;
-        "1 Disk")
-            print_text_in_color "$IRed" "1 Disk setup chosen."
-	    sleep 2
-        ;;
-        *)
-        ;;
-    esac
+# Make $SCRIPTS excutable
+chmod +x -R $SCRIPTS
+chown root:root -R $SCRIPTS
 
-# Set DNS resolver
-whiptail --title "Set DNS Resolver" --radiolist --separate-output "Which DNS provider should this Nextcloud box use?\nSelect by pressing the spacebar and ENTER" "$WT_HEIGHT" "$WT_WIDTH" 4 \
-"Quad9" "(https://www.quad9.net/)            " on \
-"Cloudflare" "(https://www.cloudflare.com/dns/)            " off \
-"Local" "($GATEWAY + 149.112.112.112)              " off 2>results
+# Allow $UNIXUSER to run figlet script
+chown "$UNIXUSER":"$UNIXUSER" "$SCRIPTS/nextcloud.sh"
 
-choice=$(< results)
-    case "$choice" in
-        Quad9)
-            sed -i "s|#DNS=.*|DNS=9.9.9.9 2620:fe::fe|g" /etc/systemd/resolved.conf
-            sed -i "s|#FallbackDNS=.*|FallbackDNS=149.112.112.112 2620:fe::9|g" /etc/systemd/resolved.conf
-        ;;
-        Cloudflare)
-            sed -i "s|#DNS=.*|DNS=1.1.1.1 2606:4700:4700::1111|g" /etc/systemd/resolved.conf
-            sed -i "s|#FallbackDNS=.*|FallbackDNS=1.0.0.1 2606:4700:4700::1001|g" /etc/systemd/resolved.conf
-        ;;
-        Local)
-            sed -i "s|#DNS=.*|DNS=$GATEWAY|g" /etc/systemd/resolved.conf
-            sed -i "s|#FallbackDNS=.*|FallbackDNS=149.112.112.112 2620:fe::9|g" /etc/systemd/resolved.conf
-        ;;
-        *)
-        ;;
-    esac
-check_command systemctl restart network-manager.service
-network_ok
+msg_box "This script will configure your Nextcloud and activate SSL.
+It will also do the following:
+
+- Generate new SSH keys for the server
+- Generate new MariaDB password
+- Install phpMyadmin and make it secure
+- Install selected apps and automatically configure them
+- Detect and set hostname
+- Detect and set trusted domains
+- Detect the best Ubuntu mirrors depending on your location
+- Upgrade your system and Nextcloud to latest version
+- Set secure permissions to Nextcloud
+- Set new passwords to Linux and Nextcloud
+- Change timezone
+- Set correct Rewriterules for Nextcloud
+- Copy content from .htaccess to .user.ini (because we use php-fpm)
+- Add additional options if you choose them
+- And more..."
+
+msg_box "Please note:
+
+[#] The script will take about 10 minutes to finish, depending on your internet connection.
+
+[#] Please read the on-screen insructions carefully, they will guide you through the setup.
+
+[#] When complete it will delete all the *.sh, *.html, *.tar, *.zip inside:
+    /root
+    /home/$UNIXUSER
+
+[#] Please consider donating if you like the product:
+    https://shop.hanssonit.se/product-category/donate/
+
+[#] You can also ask for help here:
+    https://help.nextcloud.com/c/support/appliances-docker-snappy-vm
+    https://shop.hanssonit.se/product/premium-support-per-30-minutes/"
+clear
+
+# Change Timezone
+print_text_in_color "$ICyan" "Current timezone is $(cat /etc/timezone)"
+if [[ "no" == $(ask_yes_or_no "Do you want to change the timezone?") ]]
+then
+    print_text_in_color "$ICyan" "Not changing timezone..."
+    sleep 1
+    clear
+else
+    dpkg-reconfigure tzdata
+fi
+
+# Change timezone in PHP
+sed -i "s|;date.timezone.*|date.timezone = $(cat /etc/timezone)|g" "$PHP_INI"
+
+# Change timezone for logging
+occ_command config:system:set logtimezone --value="$(cat /etc/timezone)"
+clear
 
 # Check where the best mirrors are and update
-echo
-printf "Your current server repository is:  ${ICyan}%s${Color_Off}\n" "$REPO"
+msg_box "To make downloads as fast as possible when updating you should have mirrors that are as close to you as possible.
+This VM comes with mirrors based on servers in that where used when the VM was released and packaged.
+
+If you are located outside of Europe, we recomend you to change the mirrors so that downloads are faster."
+print_text_in_color "$ICyan" "Checking current mirror..."
+print_text_in_color "$ICyan" "Your current server repository is: $REPO"
+
 if [[ "no" == $(ask_yes_or_no "Do you want to try to find a better mirror?") ]]
 then
     print_text_in_color "$ICyan" "Keeping $REPO as mirror..."
     sleep 1
 else
-   print_text_in_color "$ICyan" "Locating the best mirrors..."
-   apt update -q4 & spinner_loading
-   apt install python-pip -y
-   pip install \
-       --upgrade pip \
-       apt-select
-    apt-select -m up-to-date -t 5 -c
+    print_text_in_color "$ICyan" "Locating the best mirrors..."
+    apt update -q4 & spinner_loading
+    apt install python-pip -y
+    pip install \
+        --upgrade pip \
+        apt-select
+    check_command apt-select -m up-to-date -t 5 -c -C "$(localectl status | grep "Layout" | awk '{print $3}')"
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup && \
     if [ -f sources.list ]
     then
         sudo mv sources.list /etc/apt/
     fi
 fi
+clear
 
-# Install PostgreSQL
-# sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt/ bionic-pgdg main"
-# curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-apt update -q4 & spinner_loading
-apt install postgresql-10 -y
-
-# Create DB
-cd /tmp
-sudo -u postgres psql <<END
-CREATE USER $NCUSER WITH PASSWORD '$PGDB_PASS';
-CREATE DATABASE nextcloud_db WITH OWNER $NCUSER TEMPLATE template0 ENCODING 'UTF8';
-END
-print_text_in_color "$ICyan" "PostgreSQL password: $PGDB_PASS"
-service postgresql restart
-
-# Install Apache
-check_command apt install apache2 -y
-a2enmod rewrite \
-        headers \
-        proxy \
-        proxy_fcgi \
-        setenvif \
-        env \
-        mime \
-        dir \
-        authz_core \
-        alias \
-        ssl
-
-# We don't use Apache PHP (just to be sure)
-a2dismod mpm_prefork
-
-# Disable server tokens in Apache
-if ! grep -q 'ServerSignature' /etc/apache2/apache2.conf
-then
-{
-echo "# Turn off ServerTokens for both Apache and PHP"
-echo "ServerSignature Off"
-echo "ServerTokens Prod"
-} >> /etc/apache2/apache2.conf
-
-    check_command systemctl restart apache2.service
-fi
-
-# Install PHP "$PHPVER"
-apt update -q4 & spinner_loading
-check_command apt install -y \
-    php"$PHPVER"-fpm \
-    php"$PHPVER"-intl \
-    php"$PHPVER"-ldap \
-    php"$PHPVER"-imap \
-    php"$PHPVER"-gd \
-    php"$PHPVER"-pgsql \
-    php"$PHPVER"-curl \
-    php"$PHPVER"-xml \
-    php"$PHPVER"-zip \
-    php"$PHPVER"-mbstring \
-    php"$PHPVER"-soap \
-    php"$PHPVER"-smbclient \
-    php"$PHPVER"-json \
-    php"$PHPVER"-gmp \
-    php"$PHPVER"-bz2 \
-    php-pear
-    # php"$PHPVER"-imagick \
-    # libmagickcore-6.q16-3-extra
-
-# Enable php-fpm
-a2enconf php"$PHPVER"-fpm
-
-# Enable HTTP/2 server wide
-print_text_in_color "$ICyan" "Enabling HTTP/2 server wide..."
-cat << HTTP2_ENABLE > "$HTTP2_CONF"
-<IfModule http2_module>
-    Protocols h2 h2c http/1.1
-    H2Direct on
-</IfModule>
-HTTP2_ENABLE
-print_text_in_color "$IGreen" "$HTTP2_CONF was successfully created"
-a2enmod http2
-restart_webserver
-
-# Set up a php-fpm pool with a unixsocket
-cat << POOL_CONF > "$PHP_POOL_DIR/nextcloud.conf"
-[Nextcloud]
-user = www-data
-group = www-data
-listen = /run/php/php"$PHPVER"-fpm.nextcloud.sock
-listen.owner = www-data
-listen.group = www-data
-pm = dynamic
-; max_children is set dynamically with calculate_php_fpm()
-pm.max_children = 8
-pm.start_servers = 3
-pm.min_spare_servers = 2
-pm.max_spare_servers = 3
-env[HOSTNAME] = $(hostname -f)
-env[PATH] = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
-env[TMP] = /tmp
-env[TMPDIR] = /tmp
-env[TEMP] = /tmp
-security.limit_extensions = .php
-php_admin_value [cgi.fix_pathinfo] = 1
-
-; Optional
-; pm.max_requests = 2000
-POOL_CONF
-
-# Disable the idling example pool.
-mv $PHP_POOL_DIR/www.conf $PHP_POOL_DIR/www.conf.backup
-
-# Enable the new php-fpm config
-restart_webserver
-
-# Calculate the values of PHP-FPM based on the amount of RAM available (it's done in the startup script as well)
-calculate_php_fpm
-
-# Enable SMB client # already loaded with php-smbclient
-# echo '# This enables php-smbclient' >> /etc/php/"$PHPVER"/apache2/php.ini
-# echo 'extension="smbclient.so"' >> /etc/php/"$PHPVER"/apache2/php.ini
-
-# Install VM-tools
-install_if_not open-vm-tools
-
-# Download and validate Nextcloud package
-check_command download_verify_nextcloud_stable
-
-if [ ! -f "$HTML/$STABLEVERSION.tar.bz2" ]
-then
-msg_box "Aborting,something went wrong with the download of $STABLEVERSION.tar.bz2"
-    exit 1
-fi
-
-# Extract package
-tar -xjf "$HTML/$STABLEVERSION.tar.bz2" -C "$HTML" & spinner_loading
-rm "$HTML/$STABLEVERSION.tar.bz2"
-
-# Secure permissions
-download_static_script setup_secure_permissions_nextcloud
+# Pretty URLs
+print_text_in_color "$ICyan" "Setting RewriteBase to \"/\" in config.php..."
+chown -R www-data:www-data $NCPATH
+occ_command config:system:set overwrite.cli.url --value="http://localhost/"
+occ_command config:system:set htaccess.RewriteBase --value="/"
+occ_command maintenance:update:htaccess
 bash $SECURE & spinner_loading
 
-# Install Nextcloud
-print_text_in_color "$ICyan" "Installing Nextcloud..."
-cd "$NCPATH"
-occ_command maintenance:install \
---data-dir="$NCDATA" \
---database=pgsql \
---database-name=nextcloud_db \
---database-user="$NCUSER" \
---database-pass="$PGDB_PASS" \
---admin-user="$NCUSER" \
---admin-pass="$NCPASS"
-echo
-print_text_in_color "$ICyan" "Nextcloud version:"
-occ_command status
-sleep 3
-echo
+# Generate new SSH Keys
+printf "\nGenerating new SSH keys for the server...\n"
+rm -v /etc/ssh/ssh_host_*
+dpkg-reconfigure openssh-server
 
-# Prepare cron.php to be run every 15 minutes
-crontab -u www-data -l | { cat; echo "*/5  *  *  *  * php -f $NCPATH/cron.php > /dev/null 2>&1"; } | crontab -u www-data -
-
-# Change values in php.ini (increase max file size)
-# max_execution_time
-sed -i "s|max_execution_time =.*|max_execution_time = 3500|g" $PHP_INI
-# max_input_time
-sed -i "s|max_input_time =.*|max_input_time = 3600|g" $PHP_INI
-# memory_limit
-sed -i "s|memory_limit =.*|memory_limit = 512M|g" $PHP_INI
-# post_max
-sed -i "s|post_max_size =.*|post_max_size = 1100M|g" $PHP_INI
-# upload_max
-sed -i "s|upload_max_filesize =.*|upload_max_filesize = 1000M|g" $PHP_INI
-
-# Set loggging
-occ_command config:system:set log_type --value=file
-occ_command config:system:set logfile --value="$VMLOGS/nextcloud.log"
-rm -f "$NCDATA/nextcloud.log"
-occ_command config:system:set loglevel --value=2
-occ_command config:app:set admin_audit logfile --value="$VMLOGS/audit.log"
-install_and_enable_app admin_audit
-
-# Set SMTP mail
-occ_command config:system:set mail_smtpmode --value="smtp"
-
-# Forget login/session after 30 minutes
-occ_command config:system:set remember_login_cookie_lifetime --value="1800"
-
-# Set logrotate (max 10 MB)
-occ_command config:system:set log_rotate_size --value="10485760"
-
-# Set trashbin retention obligation (save it in trahbin for 6 months or delete when space is needed)
-occ_command config:system:set trashbin_retention_obligation --value="auto, 180"
-
-# Set versions retention obligation (save versions for 12 months or delete when space is needed)
-occ_command config:system:set versions_retention_obligation --value="auto, 365"
-
-# Remove simple signup
-occ_command config:system:set simpleSignUpLink.shown --value="false" 
-
-# Enable OPCache for PHP 
-# https://docs.nextcloud.com/server/14/admin_manual/configuration_server/server_tuning.html#enable-php-opcache
-phpenmod opcache
-{
-echo "# OPcache settings for Nextcloud"
-echo "opcache.enable=1"
-echo "opcache.enable_cli=1"
-echo "opcache.interned_strings_buffer=8"
-echo "opcache.max_accelerated_files=10000"
-echo "opcache.memory_consumption=256"
-echo "opcache.save_comments=1"
-echo "opcache.revalidate_freq=1"
-echo "opcache.validate_timestamps=1"
-} >> $PHP_INI
-
-# PHP-FPM optimization
-# https://geekflare.com/php-fpm-optimization/
-sed -i "s|;emergency_restart_threshold.*|emergency_restart_threshold = 10|g" /etc/php/"$PHPVER"/fpm/php-fpm.conf
-sed -i "s|;emergency_restart_interval.*|emergency_restart_interval = 1m|g" /etc/php/"$PHPVER"/fpm/php-fpm.conf
-sed -i "s|;process_control_timeout.*|process_control_timeout = 10|g" /etc/php/"$PHPVER"/fpm/php-fpm.conf
-
-
-# Install Redis (distrubuted cache)
-run_static_script redis-server-ubuntu
-
-# Enable igbinary for PHP
-# https://github.com/igbinary/igbinary
-if is_this_installed "php$PHPVER"-dev
+# Generate new MariaDB password
+echo "Generating new MARIADB password..."
+if bash "$SCRIPTS/change_mysql_pass.sh" && wait
 then
-    if ! yes no | pecl install -Z igbinary
-    then
-        msg_box "igbinary PHP module installation failed"
-        exit
-    else
-        print_text_in_color "$IGreen" "igbinary PHP module installation OK!"
-    fi
-{
-echo "# igbinary for PHP"
-echo "extension=igbinary.so"
-echo "session.serialize_handler=igbinary"
-echo "igbinary.compact_strings=On"
-} >> $PHP_INI
-restart_webserver
+    rm "$SCRIPTS/change_mysql_pass.sh"
 fi
 
-# APCu (local cache)
-if is_this_installed "php$PHPVER"-dev
+msg_box "The following script will install a trusted
+SSL certificate through Let's Encrypt.
+
+It's recommended to use SSL together with Nextcloud.
+Please open port 80 and 443 to this servers IP before you continue.
+
+More information can be found here:
+https://www.techandme.se/open-port-80-443/"
+
+# Let's Encrypt
+if [[ "yes" == $(ask_yes_or_no "Do you want to install SSL?") ]]
 then
-    if ! yes no | pecl install -Z apcu
-    then
-        msg_box "APCu PHP module installation failed"
-        exit
-    else
-        print_text_in_color "$IGreen" "APCu PHP module installation OK!"
-    fi
-{
-echo "# APCu settings for Nextcloud"
-echo "extension=apcu.so"
-echo "apc.enabled=1"
-echo "apc.max_file_size=5M"
-echo "apc.shm_segments=1"
-echo "apc.shm_size=128M"
-echo "apc.entries_hint=4096"
-echo "apc.ttl=3600"
-echo "apc.gc_ttl=7200"
-echo "apc.mmap_file_mask=NULL"
-echo "apc.slam_defense=1"
-echo "apc.enable_cli=1"
-echo "apc.use_request_time=1"
-echo "apc.serializer=igbinary"
-echo "apc.coredump_unmap=0"
-echo "apc.preload_path"
-} >> $PHP_INI
-restart_webserver
+    bash $SCRIPTS/activate-ssl.sh
+else
+    echo
+    print_text_in_color "$ICyan" "OK, but if you want to run it later, just type: sudo bash $SCRIPTS/activate-ssl.sh"
+    any_key "Press any key to continue..."
 fi
+clear
 
-# Fix https://github.com/nextcloud/vm/issues/714
-print_text_in_color "$ICyan" "Optimizing Nextcloud..."
-yes | occ_command db:convert-filecache-bigint
-occ_command db:add-missing-indices
-
-# Install Figlet
-install_if_not figlet
-
-# To be able to use snakeoil certs
-install_if_not ssl-cert
-
-# Generate $HTTP_CONF
-if [ ! -f $HTTP_CONF ]
-then
-    touch "$HTTP_CONF"
-    cat << HTTP_CREATE > "$HTTP_CONF"
-<VirtualHost *:80>
-
-### YOUR SERVER ADDRESS ###
-#    ServerAdmin admin@example.com
-#    ServerName example.com
-#    ServerAlias subdomain.example.com
-
-### SETTINGS ###
-    <FilesMatch "\.php$">
-        SetHandler "proxy:unix:/run/php/php$PHPVER-fpm.nextcloud.sock|fcgi://localhost"
-    </FilesMatch>
-
-    DocumentRoot $NCPATH
-
-    <Directory $NCPATH>
-    Options Indexes FollowSymLinks
-    AllowOverride All
-    Require all granted
-    Satisfy Any
-    </Directory>
-
-    <IfModule mod_dav.c>
-    Dav off
-    </IfModule>
-
-    <Directory "$NCDATA">
-    # just in case if .htaccess gets disabled
-    Require all denied
-    </Directory>
-    
-    # The following lines prevent .htaccess and .htpasswd files from being
-    # viewed by Web clients.
-    <Files ".ht*">
-    Require all denied
-    </Files>
-    
-    # Disable HTTP TRACE method.
-    TraceEnable off
-
-    # Disable HTTP TRACK method.
-    RewriteEngine On
-    RewriteCond %{REQUEST_METHOD} ^TRACK
-    RewriteRule .* - [R=405,L]
-
-    SetEnv HOME $NCPATH
-    SetEnv HTTP_HOME $NCPATH
-    
-    # Avoid "Sabre\DAV\Exception\BadRequest: expected filesize XXXX got XXXX"
-    <IfModule mod_reqtimeout.c>
-    RequestReadTimeout body=0
-    </IfModule>
-    
-</VirtualHost>
-HTTP_CREATE
-    print_text_in_color "$IGreen" "$HTTP_CONF was successfully created."
-fi
-
-# Generate $SSL_CONF
-if [ ! -f $SSL_CONF ]
-then
-    touch "$SSL_CONF"
-    cat << SSL_CREATE > "$SSL_CONF"
-<VirtualHost *:443>
-    Header add Strict-Transport-Security: "max-age=15768000;includeSubdomains"
-    SSLEngine on
-
-### YOUR SERVER ADDRESS ###
-#    ServerAdmin admin@example.com
-#    ServerName example.com
-#    ServerAlias subdomain.example.com
-
-### SETTINGS ###
-    <FilesMatch "\.php$">
-        SetHandler "proxy:unix:/run/php/php$PHPVER-fpm.nextcloud.sock|fcgi://localhost"
-    </FilesMatch>
-
-    DocumentRoot $NCPATH
-
-    <Directory $NCPATH>
-    Options Indexes FollowSymLinks
-    AllowOverride All
-    Require all granted
-    Satisfy Any
-    </Directory>
-
-    <IfModule mod_dav.c>
-    Dav off
-    </IfModule>
-
-    <Directory "$NCDATA">
-    # just in case if .htaccess gets disabled
-    Require all denied
-    </Directory>
-    
-    # The following lines prevent .htaccess and .htpasswd files from being
-    # viewed by Web clients.
-    <Files ".ht*">
-    Require all denied
-    </Files>
-    
-    # Disable HTTP TRACE method.
-    TraceEnable off
-
-    # Disable HTTP TRACK method.
-    RewriteEngine On
-    RewriteCond %{REQUEST_METHOD} ^TRACK
-    RewriteRule .* - [R=405,L]
-
-    SetEnv HOME $NCPATH
-    SetEnv HTTP_HOME $NCPATH
-    
-    # Avoid "Sabre\DAV\Exception\BadRequest: expected filesize XXXX got XXXX"
-    <IfModule mod_reqtimeout.c>
-    RequestReadTimeout body=0
-    </IfModule>
-
-### LOCATION OF CERT FILES ###
-    SSLCertificateFile /etc/ssl/certs/ssl-cert-snakeoil.pem
-    SSLCertificateKeyFile /etc/ssl/private/ssl-cert-snakeoil.key
-</VirtualHost>
-SSL_CREATE
-    print_text_in_color "$IGreen" "$SSL_CONF was successfully created."
-fi
-
-# Enable new config
-a2ensite nextcloud_ssl_domain_self_signed.conf
-a2ensite nextcloud_http_domain_self_signed.conf
-a2dissite default-ssl
-restart_webserver
-
-whiptail --title "Install apps or software" --checklist --separate-output "Automatically configure and install selected apps or software\nDeselect by pressing the spacebar" "$WT_HEIGHT" "$WT_WIDTH" 4 \
-"Calendar" "            " on \
-"Contacts" "            " on \
-"IssueTemplate" "       " on \
-"PDFViewer" "           " on \
-"Extract" "             " on \
-"Text" "                " on \
-"Mail" "                " on \
-"Webmin" "              " on 2>results
+# Install Apps
+whiptail --title "Which apps do you want to install?" --checklist --separate-output "Automatically configure and install selected apps\nSelect by pressing the spacebar" "$WT_HEIGHT" "$WT_WIDTH" 4 \
+"Fail2ban" "(Extra Bruteforce protection)   " OFF \
+"phpMyadmin" "(*SQL GUI)       " OFF \
+"Netdata" "(Real-time server monitoring)       " OFF \
+"Collabora" "(Online editing [2GB RAM])   " OFF \
+"OnlyOffice" "(Online editing [2GB RAM])   " OFF \
+"Bitwarden" "(External password manager)   " OFF \
+"FullTextSearch" "(Elasticsearch for Nextcloud [2GB RAM])   " OFF \
+"PreviewGenerator" "(Pre-generate previews)   " OFF \
+"LDAP" "(Windows Active directory)   " OFF \
+"Talk" "(Nextcloud Video calls and chat)   " OFF 2>results
 
 while read -r -u 9 choice
 do
-    case "$choice" in
-        Calendar)
-            install_and_enable_app calendar
+    case $choice in
+        Fail2ban)
+            clear
+            run_app_script fail2ban
         ;;
-        Contacts)
-            install_and_enable_app contacts
+        
+        Netdata)
+            clear
+            run_app_script netdata
         ;;
-        IssueTemplate)
-            install_and_enable_app issuetemplate
+            clear
+        phpMyadmin)
+            run_app_script phpmyadmin_install_ubuntu16
         ;;
-        PDFViewer)
-            install_and_enable_app files_pdfviewer
+        
+        OnlyOffice)
+            clear
+            run_app_script onlyoffice
         ;;
-	Extract)
-            if install_and_enable_app extract
+
+        Collabora)
+            clear
+            run_app_script collabora
+        ;;
+
+        Bitwarden)
+            clear
+            run_app_script tmbitwarden
+        ;;
+
+        FullTextSearch)
+            clear
+           run_app_script fulltextsearch
+        ;;
+
+        PreviewGenerator)
+            clear
+           run_app_script previewgenerator
+        ;;
+
+        LDAP)
+            clear
+	    print_text_in_color "$ICyan" "Installing LDAP..."
+            if install_and_enable_app user_ldap
 	    then
-	        install_if_not unrar
-	        install_if_not p7zip
-	        install_if_not p7zip-full
+	        msg_box "LDAP installed! Please visit https://subdomain.yourdomain.com/settings/admin/ldap to finish the setup once this script is done."
+	    else msg_box "LDAP installation failed."
 	    fi
-	;;
-	Text)
-            install_and_enable_app text
         ;;
-	Mail)
-            install_and_enable_app mail
+
+        Talk)
+            clear
+            run_app_script talk
         ;;
-        Webmin)
-            run_app_script webmin
+
+        *)
         ;;
+    esac
+done 9< results
+rm -f results
+clear
+
+# Change passwords
+# CLI USER
+print_text_in_color "$ICyan" "For better security, change the system user password for [$(getent group sudo | cut -d: -f4 | cut -d, -f1)]"
+any_key "Press any key to change password for system user..."
+while true
+do
+    sudo passwd "$(getent group sudo | cut -d: -f4 | cut -d, -f1)" && break
+done
+echo
+clear
+# NEXTCLOUD USER
+NCADMIN=$(occ_command user:list | awk '{print $3}')
+print_text_in_color "$ICyan" "The current admin user in Nextcloud GUI is [$NCADMIN]"
+print_text_in_color "$ICyan" "We will now replace this user with your own."
+any_key "Press any key to replace the current admin user for Nextcloud..."
+# Create new user
+while true
+do
+    print_text_in_color "$ICyan" "Please enter the username for your new user:"
+    read -r NEWUSER
+    sudo -u www-data $NCPATH/occ user:add "$NEWUSER" -g admin && break
+done
+# Delete old user
+if [[ "$NCADMIN" ]]
+then
+    print_text_in_color "$ICyan" "Deleting $NCADMIN..."
+    occ_command user:delete "$NCADMIN"
+fi
+clear
+
+# Set notifications for admin
+NCADMIN=$(occ_command user:list | awk '{print $3}')
+occ_command notification:generate -l "Please remember to setup SMTP to be able to send shared links, user notifications and more via email. Please go here and start setting it up: https://your-nextcloud/settings/admin." "$NCADMIN" "Please setup SMTP"
+occ_command notification:generate -l "If you need support, please visit the shop: https://shop.hanssonit.se" "$NCADMIN" "Do you need support?"
+
+# Fixes https://github.com/nextcloud/vm/issues/58
+a2dismod status
+restart_webserver
+
+# Extra configurations
+whiptail --title "Extra configurations" --checklist --separate-output "Choose what you want to configure\nSelect by pressing the spacebar" "$WT_HEIGHT" "$WT_WIDTH" 4 \
+"Security" "(Add extra security based on this http://goo.gl/gEJHi7)" OFF \
+"ModSecurity" "(Add ModSecurity for Apache2)" OFF \
+"Static IP" "(Set static IP in Ubuntu with netplan.io)" OFF \
+"Automatic updates" "(Automatically update your server every week on Sundays)" OFF 2>results
+
+while read -r -u 9 choice
+do
+    case $choice in
+        "Security")
+            clear
+            run_static_script security
+        ;;
+
+        "ModSecurity")
+            clear
+            run_static_script modsecurity
+        ;;
+
+        "Static IP")
+            clear
+            run_static_script static_ip
+            rm -f "$SCRIPTS"/lib.sh
+        ;;
+
+	"Automatic updates")
+            clear
+            run_static_script automatic_updates
+        ;;
+
         *)
         ;;
     esac
 done 9< results
 rm -f results
 
-# Get needed scripts for first bootup
-check_command curl_to_dir "$GITHUB_REPO" nextcloud-startup-script.sh "$SCRIPTS"
-check_command curl_to_dir "$GITHUB_REPO" lib.sh "$SCRIPTS"
-download_static_script instruction
-download_static_script history
-download_static_script static_ip
-
 if home_sme_server
 then
-    # Change nextcloud-startup-script.sh
-    check_command sed -i "s|VM|Home/SME Server|g" $SCRIPTS/nextcloud-startup-script.sh
+    # Add specific values to PHP-FPM based on 16 GB RAM
+    check_command sed -i "s|pm.max_children.*|pm.max_children = 307|g" $PHP_POOL_DIR/nextcloud.conf
+    check_command sed -i "s|pm.start_servers.*|pm.start_servers = 30|g" $PHP_POOL_DIR/nextcloud.conf
+    check_command sed -i "s|pm.min_spare_servers.*|pm.min_spare_servers = 20|g" $PHP_POOL_DIR/nextcloud.conf
+    check_command sed -i "s|pm.max_spare_servers.*|pm.max_spare_servers = 257|g" $PHP_POOL_DIR/nextcloud.conf
+    restart_webserver
+else
+    # Calculate the values of PHP-FPM based on the amount of RAM available (minimum 2 GB or 8 children)
+    calculate_php_fpm
+
+    # Run again if values are reset on last run
+    calculate_php_fpm
 fi
 
-# Make $SCRIPTS excutable
-chmod +x -R "$SCRIPTS"
-chown root:root -R "$SCRIPTS"
+# Add temporary fix if needed
+bash "$SCRIPTS"/temporary-fix.sh
+rm "$SCRIPTS"/temporary-fix.sh
 
-# Prepare first bootup
-check_command run_static_script change-ncadmin-profile
-check_command run_static_script change-root-profile
+# Cleanup 1
+occ_command maintenance:repair
+rm -f "$SCRIPTS/ip.sh"
 
-# Upgrade
-apt update -q4 & spinner_loading
-apt dist-upgrade -y
+rm -f "$SCRIPTS/test_connection.sh"
+rm -f "$SCRIPTS/change_mysql_pass.sh"
+rm -f "$SCRIPTS/instruction.sh"
+rm -f "$NCDATA/nextcloud.log"
+rm -f "$SCRIPTS/static_ip.sh"
 
-# Remove LXD (always shows up as failed during boot)
-apt purge lxd -y
+find /root "/home/$UNIXUSER" -type f \( -name '*.sh*' -o -name '*.html*' -o -name '*.tar*' -o -name 'results' -o -name '*.zip*' \) -delete
+find "$NCPATH" -type f \( -name 'results' -o -name '*.sh*' \) -delete
+sed -i "s|instruction.sh|nextcloud.sh|g" "/home/$UNIXUSER/.bash_profile"
 
-# Cleanup
+truncate -s 0 \
+    /root/.bash_history \
+    "/home/$UNIXUSER/.bash_history" \
+    /var/spool/mail/root \
+    "/var/spool/mail/$UNIXUSER" \
+    /var/log/apache2/access.log \
+    /var/log/apache2/error.log \
+    /var/log/cronjobs_success.log \
+    "$VMLOGS/nextcloud.log"
+
+sed -i "s|sudo -i||g" "/home/$UNIXUSER/.bash_profile"
+
+cat << ROOTNEWPROFILE > "/root/.bash_profile"
+# ~/.profile: executed by Bourne-compatible login shells.
+
+if [ "/bin/bash" ]
+then
+    if [ -f ~/.bashrc ]
+    then
+        . ~/.bashrc
+    fi
+fi
+
+if [ -x /var/scripts/nextcloud-startup-script.sh ]
+then
+    /var/scripts/nextcloud-startup-script.sh
+fi
+
+if [ -x /var/scripts/history.sh ]
+then
+    /var/scripts/history.sh
+fi
+
+mesg n
+
+ROOTNEWPROFILE
+
+# Download all app scripts
+print_text_in_color "$ICyan" "Downloading all the latest app scripts to $SCRIPTS/apps..."
+mkdir -p $SCRIPTS/apps
+cd $SCRIPTS/apps
+check_command curl -s https://codeload.github.com/nextcloud/vm/tar.gz/master | tar -xz --strip=2 vm-master/apps
+
+# Upgrade system
+print_text_in_color "$ICyan" "System will now upgrade..."
+bash $SCRIPTS/update.sh
+
+# Cleanup 2
 apt autoremove -y
 apt autoclean
-find /root "/home/$UNIXUSER" -type f \( -name '*.sh*' -o -name '*.html*' -o -name '*.tar*' -o -name '*.zip*' \) -delete
 
-# Install virtual kernels for Hyper-V, and extra for UTF8 kernel module + Collabora and OnlyOffice
-# Kernel 4.15
-apt install -y --install-recommends \
-linux-virtual \
-linux-tools-virtual \
-linux-cloud-tools-virtual \
-linux-image-virtual \
-linux-image-extra-virtual
-
-# Add aliases
-if [ -f /root/.bash_aliases ]
+# Set trusted domain in config.php
+if [ -f "$SCRIPTS"/trusted.sh ]
 then
-    if ! grep -q "nextcloud" /root/.bash_aliases
-    then
-{
-echo "alias nextcloud_occ='sudo -u www-data php /var/www/nextcloud/occ'"
-echo "alias run_update_nextcloud='bash /var/scripts/update.sh'"
-} >> /root/.bash_aliases
-    fi
-elif [ ! -f /root/.bash_aliases ]
-then
-{
-echo "alias nextcloud_occ='sudo -u www-data php /var/www/nextcloud/occ'"
-echo "alias run_update_nextcloud='bash /var/scripts/update.sh'"
-} > /root/.bash_aliases
+    bash "$SCRIPTS"/trusted.sh
+    rm -f "$SCRIPTS"/trusted.sh
+else
+    run_static_script trusted
 fi
 
-# Set secure permissions final (./data/.htaccess has wrong permissions otherwise)
-bash $SECURE & spinner_loading
+# Success!
+msg_box "Congratulations! You have successfully installed Nextcloud!
 
-# Force MOTD to show correct number of updates
-sudo /usr/lib/update-notifier/update-motd-updates-available --force
+Login to Nextcloud in your browser:
+- IP: $ADDRESS
+- Hostname: $(hostname -f)
+
+SUPPORT:
+Please ask for help in the forums, visit our shop to buy support,
+or buy a yearly subscription from Nextcloud:
+- SUPPORT: https://shop.hanssonit.se/product/premium-support-per-30-minutes/
+- FORUM: https://help.nextcloud.com/
+- SUBSCRIPTION: https://nextcloud.com/pricing/ (Please refer to @enoch85)
+
+Please report any bugs here: https://github.com/nextcloud/vm/issues
+
+TIPS & TRICKS:
+1. Publish your server online: https://goo.gl/iUGE2U
+
+2. To login to PostgreSQL just type: sudo -u postgres psql nextcloud_db
+
+3. To update this VM just type: sudo bash /var/scripts/update.sh
+
+4. Change IP to something outside DHCP: sudo nano /etc/netplan/01-netcfg.yaml
+
+5. For a better experience it's a good idea to setup an email account here:
+   https://yourcloud.xyz/settings/admin"
+
+# Prefer IPv6
+sed -i "s|precedence ::ffff:0:0/96  100|#precedence ::ffff:0:0/96  100|g" /etc/gai.conf
+
+# Shutdown MariaDB gracefully
+echo "Shutting down MariaDB..."
+check_command sudo systemctl stop mariadb.service
+rm -f /var/lib/mysql/ib_logfile[01]
+echo
 
 # Reboot
 print_text_in_color "$IGreen" "Installation done, system will now reboot..."
+rm -f "$SCRIPTS/you-can-not-run-the-startup-script-several-times"
+rm -f "$SCRIPTS/nextcloud-startup-script.sh"
 reboot
