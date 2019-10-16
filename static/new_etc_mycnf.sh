@@ -2,7 +2,7 @@
 # shellcheck disable=2034,2059
 true
 # shellcheck source=lib.sh
-MYCNFPW=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+MYCNFPW=1 . <(curl -sL https://raw.githubusercontent.com/tgd1973/Nexcloud-vm/master/lib.sh)
 unset MYCNFPW
 
 # Check for errors + debug code and abort if something isn't right
