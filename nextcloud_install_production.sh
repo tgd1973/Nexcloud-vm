@@ -297,14 +297,15 @@ fi
 # Install PHP "$PHPVER"
 apt update -q4 & spinner_loading
 check_command apt install -y \
-    php"$PHPVER"-fpm \
+    libapache2-mod-php"$PHPVER" \
+    php"$PHPVER"-common \
+    php"$PHPVER"-mysql \
     php"$PHPVER"-intl \
+    php"$PHPVER"-mcrypt \
     php"$PHPVER"-ldap \
     php"$PHPVER"-imap \
-    
-    php"$PHPVER"-mcrypt \
+    php"$PHPVER"-cli \
     php"$PHPVER"-gd \
-    php"$PHPVER"-mysql \
     php"$PHPVER"-curl \
     php"$PHPVER"-xml \
     php"$PHPVER"-zip \
@@ -318,8 +319,6 @@ check_command apt install -y \
     # php"$PHPVER"-imagick \
     # libmagickcore-6.q16-3-extra
 
-# Enable php-fpm
-a2enconf php"$PHPVER"-fpm
 
 # Enable HTTP/2 server wide
 print_text_in_color "$ICyan" "Enabling HTTP/2 server wide..."
