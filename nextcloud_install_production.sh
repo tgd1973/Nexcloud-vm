@@ -167,22 +167,22 @@ choice=$(< results)
 
 # Set DNS resolver
 whiptail --title "Set DNS Resolver" --radiolist --separate-output "Which DNS provider should this Nextcloud box use?\nSelect by pressing the spacebar and ENTER" "$WT_HEIGHT" "$WT_WIDTH" 4 \
-"Quad9" "(https://www.quad9.net/)            " off \
+"Local" "($GATEWAY + 149.112.112.112)              " on \
 "Cloudflare" "(https://www.cloudflare.com/dns/)            " off \
-"Local" "($GATEWAY + 149.112.112.112)              " on 2>results
+"Quad9" "(https://www.quad9.net/)            " off 2>results
 
 choice=$(< results)
     case "$choice" in
-        Quad9)
-            sed -i "s|#DNS=.*|DNS=9.9.9.9 2620:fe::fe|g" /etc/systemd/resolved.conf
+	     Local)
+            sed -i "s|#DNS=.*|DNS=$GATEWAY|g" /etc/systemd/resolved.conf
             sed -i "s|#FallbackDNS=.*|FallbackDNS=149.112.112.112 2620:fe::9|g" /etc/systemd/resolved.conf
         ;;
-        Cloudflare)
+		Cloudflare)
             sed -i "s|#DNS=.*|DNS=1.1.1.1 2606:4700:4700::1111|g" /etc/systemd/resolved.conf
             sed -i "s|#FallbackDNS=.*|FallbackDNS=1.0.0.1 2606:4700:4700::1001|g" /etc/systemd/resolved.conf
         ;;
-        Local)
-            sed -i "s|#DNS=.*|DNS=$GATEWAY|g" /etc/systemd/resolved.conf
+        Quad9)
+            sed -i "s|#DNS=.*|DNS=9.9.9.9 2620:fe::fe|g" /etc/systemd/resolved.conf
             sed -i "s|#FallbackDNS=.*|FallbackDNS=149.112.112.112 2620:fe::9|g" /etc/systemd/resolved.conf
         ;;
         *)
@@ -298,6 +298,7 @@ fi
 apt update -q4 & spinner_loading
 check_command apt install -y \
     libapache2-mod-php"$PHPVER" \
+    php"$PHPVER"-fpm \
     php"$PHPVER"-common \
     php"$PHPVER"-mysql \
     php"$PHPVER"-intl \
