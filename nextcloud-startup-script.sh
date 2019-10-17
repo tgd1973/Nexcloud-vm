@@ -117,7 +117,7 @@ Please also post this issue on: https://github.com/nextcloud/vm/issues"
 fi
 
 # shellcheck source=lib.sh
-NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/tgd1973/Nexcloud-vm/master/lib.sh)
 unset NC_UPDATE
 unset CHECK_CURRENT_REPO
 unset NCDB
@@ -383,7 +383,7 @@ do
             clear
             run_app_script netdata
         ;;
-            clear
+           
         phpMyadmin)
             run_app_script phpmyadmin_install_ubuntu16
         ;;
@@ -624,7 +624,7 @@ Please report any bugs here: https://github.com/nextcloud/vm/issues
 TIPS & TRICKS:
 1. Publish your server online: https://goo.gl/iUGE2U
 
-2. To login to PostgreSQL just type: sudo -u postgres psql nextcloud_db
+2. To login to MariaDB just type: mysql -u root
 
 3. To update this VM just type: sudo bash /var/scripts/update.sh
 
