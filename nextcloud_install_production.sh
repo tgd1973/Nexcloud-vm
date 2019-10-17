@@ -167,9 +167,9 @@ choice=$(< results)
 
 # Set DNS resolver
 whiptail --title "Set DNS Resolver" --radiolist --separate-output "Which DNS provider should this Nextcloud box use?\nSelect by pressing the spacebar and ENTER" "$WT_HEIGHT" "$WT_WIDTH" 4 \
-"Quad9" "(https://www.quad9.net/)            " on \
+"Quad9" "(https://www.quad9.net/)            " off \
 "Cloudflare" "(https://www.cloudflare.com/dns/)            " off \
-"Local" "($GATEWAY + 149.112.112.112)              " off 2>results
+"Local" "($GATEWAY + 149.112.112.112)              " on 2>results
 
 choice=$(< results)
     case "$choice" in
@@ -297,24 +297,23 @@ fi
 # Install PHP "$PHPVER"
 apt update -q4 & spinner_loading
 check_command apt install -y \
-    libapache2-mod-php7.2 \
-    php7.2-common \
-    php7.2-mysql \
-    php7.2-intl \
-    php7.2-mcrypt \
-    php7.2-ldap \
-    php7.2-imap \
-    php7.2-cli \
-    php7.2-gd \
-    php7.2-curl \
-    php7.2-xml \
-    php7.2-zip \
-    php7.2-mbstring \
-    php7.2-soap \
-    php7.2-smbclient \
-    php7.2-json \
-    php7.2-gmp \
-    php7.2-bz2 \
+    libapache2-mod-php"$PHPVER" \
+    php"$PHPVER"-common \
+    php"$PHPVER"-mysql \
+    php"$PHPVER"-intl \
+    php"$PHPVER"-ldap \
+    php"$PHPVER"-imap \
+    php"$PHPVER"-cli \
+    php"$PHPVER"-gd \
+    php"$PHPVER"-curl \
+    php"$PHPVER"-xml \
+    php"$PHPVER"-zip \
+    php"$PHPVER"-mbstring \
+    php"$PHPVER"-soap \
+    php"$PHPVER"-smbclient \
+    php"$PHPVER"-json \
+    php"$PHPVER"-gmp \
+    php"$PHPVER"-bz2 \
     php-pear
     # php"$PHPVER"-imagick \
     # libmagickcore-6.q16-3-extra
