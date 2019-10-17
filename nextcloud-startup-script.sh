@@ -586,7 +586,7 @@ ROOTNEWPROFILE
 print_text_in_color "$ICyan" "Downloading all the latest app scripts to $SCRIPTS/apps..."
 mkdir -p $SCRIPTS/apps
 cd $SCRIPTS/apps
-check_command curl -s https://codeload.github.com/nextcloud/vm/tar.gz/master | tar -xz --strip=2 vm-master/apps
+check_command curl -s https://github.com/tgd1973/Nexcloud-vm/archive/18.01.tar.gz | tar -xz --strip=2 vm-master/apps
 
 # Upgrade system
 print_text_in_color "$ICyan" "System will now upgrade..."
