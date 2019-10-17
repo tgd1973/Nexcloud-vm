@@ -35,9 +35,9 @@ then
 fi
 
 
-if ! version 18.04 "$DISTRO" 18.04.5; then
+if ! version 18.04 "$DISTRO" 18.04.3; then
     echo "Ubuntu version seems to be $DISTRO"
-    echo "It must be between 18.04 - 18.04.5"
+    echo "It must be between 18.04 - 18.04.3"
     echo "Please install that version and try again."
     exit 1
 fi
