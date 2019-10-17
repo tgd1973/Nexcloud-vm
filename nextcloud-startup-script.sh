@@ -117,7 +117,7 @@ Please also post this issue on: https://github.com/nextcloud/vm/issues"
 fi
 
 # shellcheck source=lib.sh
-NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/tgd1973/Nexcloud-vm/master/lib.sh)
+NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
 unset NC_UPDATE
 unset CHECK_CURRENT_REPO
 unset NCDB
@@ -128,42 +128,16 @@ unset NCDB
 DEBUG=0
 debug_mode
 
-# Nextcloud 16 is required.
-lowest_compatible_nc 16
-
-
-# Set keyboard layout, important when changing passwords and such
-if [ "$KEYBOARD_LAYOUT" = "se" ]
+# Check network
+if network_ok
 then
-    clear
-    print_text_in_color "$ICyan" "Current keyboard layout is Swedish."
-    if [[ "no" == $(ask_yes_or_no "Do you want to change keyboard layout?") ]]
-    then
-        print_text_in_color "$ICyan" "Not changing keyboard layout..."
-        sleep 1
-        clear
-    else
-        dpkg-reconfigure keyboard-configuration
-        msg_box "We will now try to set the new keyboard layout directly in this session. If that fails, the server will be rebooted to apply the new keyboard settings.\n\nIf the server are rebooted, please login as usual and run this script again."
-	if ! setupcon --force
-        then
-            reboot
-        fi
-    fi
-fi
+    printf "${Green}Online!${Color_Off}\n"
+else
+msg_box "Network NOT OK!
 
-# Set locales
-print_text_in_color "$ICyan" "Setting locales..."
-KEYBOARD_LAYOUT=$(localectl status | grep "Layout" | awk '{print $3}')
-if [ "$KEYBOARD_LAYOUT" = "se" ]
-then
-    print_text_in_color "$ICyan" "Svensk locale är redan konfigurerad."
-elif [ "$KEYBOARD_LAYOUT" = "de" ]
-then 
-    sudo locale-gen "de_DE.UTF-8" && sudo dpkg-reconfigure --frontend=noninteractive locales
-elif [ "$KEYBOARD_LAYOUT" = "us" ]
-then
-    sudo locale-gen "en_US.UTF-8" && sudo dpkg-reconfigure --frontend=noninteractive locales
+You must have a working Network connection to run this script.
+Please report this issue here: $ISSUES"
+    exit 1
 fi
 
 # Is this run as a pure root user?
@@ -227,7 +201,7 @@ download_static_script update
 download_static_script trusted
 download_static_script test_connection
 download_static_script setup_secure_permissions_nextcloud
-download_static_script change_db_pass
+download_static_script change_mysql_pass
 download_static_script nextcloud
 download_static_script update-config
 download_le_script activate-ssl
@@ -265,7 +239,8 @@ msg_box "This script will configure your Nextcloud and activate SSL.
 It will also do the following:
 
 - Generate new SSH keys for the server
-- Generate new PostgreSQL password
+- Generate new MariaDB password
+- Install phpMyadmin and make it secure
 - Install selected apps and automatically configure them
 - Detect and set hostname
 - Detect and set trusted domains
@@ -356,11 +331,12 @@ printf "\nGenerating new SSH keys for the server...\n"
 rm -v /etc/ssh/ssh_host_*
 dpkg-reconfigure openssh-server
 
-# Generate new PostgreSQL password
-print_text_in_color "$ICyan" "Generating new PostgreSQL password..."
-check_command bash "$SCRIPTS/change_db_pass.sh"
-sleep 3
-clear
+# Generate new MariaDB password
+echo "Generating new MARIADB password..."
+if bash "$SCRIPTS/change_mysql_pass.sh" && wait
+then
+    rm "$SCRIPTS/change_mysql_pass.sh"
+fi
 
 msg_box "The following script will install a trusted
 SSL certificate through Let's Encrypt.
@@ -385,7 +361,7 @@ clear
 # Install Apps
 whiptail --title "Which apps do you want to install?" --checklist --separate-output "Automatically configure and install selected apps\nSelect by pressing the spacebar" "$WT_HEIGHT" "$WT_WIDTH" 4 \
 "Fail2ban" "(Extra Bruteforce protection)   " OFF \
-"Adminer" "(PostgreSQL GUI)       " OFF \
+"phpMyadmin" "(*SQL GUI)       " OFF \
 "Netdata" "(Real-time server monitoring)       " OFF \
 "Collabora" "(Online editing [2GB RAM])   " OFF \
 "OnlyOffice" "(Online editing [2GB RAM])   " OFF \
@@ -402,17 +378,16 @@ do
             clear
             run_app_script fail2ban
         ;;
-
-        Adminer)
-            clear
-            run_app_script adminer
-        ;;
-
+        
         Netdata)
             clear
             run_app_script netdata
         ;;
-
+            clear
+        phpMyadmin)
+            run_app_script phpmyadmin_install_ubuntu16
+        ;;
+        
         OnlyOffice)
             clear
             run_app_script onlyoffice
@@ -559,8 +534,9 @@ rm "$SCRIPTS"/temporary-fix.sh
 # Cleanup 1
 occ_command maintenance:repair
 rm -f "$SCRIPTS/ip.sh"
-rm -f "$SCRIPTS/change_db_pass.sh"
+
 rm -f "$SCRIPTS/test_connection.sh"
+rm -f "$SCRIPTS/change_mysql_pass.sh"
 rm -f "$SCRIPTS/instruction.sh"
 rm -f "$NCDATA/nextcloud.log"
 rm -f "$SCRIPTS/static_ip.sh"
@@ -659,6 +635,12 @@ TIPS & TRICKS:
 
 # Prefer IPv6
 sed -i "s|precedence ::ffff:0:0/96  100|#precedence ::ffff:0:0/96  100|g" /etc/gai.conf
+
+# Shutdown MariaDB gracefully
+echo "Shutting down MariaDB..."
+check_command sudo systemctl stop mariadb.service
+rm -f /var/lib/mysql/ib_logfile[01]
+echo
 
 # Reboot
 print_text_in_color "$IGreen" "Installation done, system will now reboot..."
