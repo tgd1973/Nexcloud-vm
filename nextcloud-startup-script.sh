@@ -385,7 +385,7 @@ do
         ;;
            
         phpMyadmin)
-            run_app_script phpmyadmin_install_ubuntu16
+            run_app_script phpmyadmin_install_ubuntu18
         ;;
         
         OnlyOffice)
