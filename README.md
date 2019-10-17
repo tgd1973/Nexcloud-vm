@@ -1,7 +1,7 @@
 Nextcloud VM
 ============
 
-Server installation. Simplified. :cloud:
+Server installation + MySQL . Simplified. :cloud:
 --------------------------------
 
 #### Interactive Guidance
