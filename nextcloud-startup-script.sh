@@ -117,7 +117,7 @@ Please also post this issue on: https://github.com/nextcloud/vm/issues"
 fi
 
 # shellcheck source=lib.sh
-NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/nextcloud/vm/master/lib.sh)
+NCDB=1 && CHECK_CURRENT_REPO=1 && NC_UPDATE=1 . <(curl -sL https://raw.githubusercontent.com/tgd1973/Nexcloud-vm/master/lib.sh)
 unset NC_UPDATE
 unset CHECK_CURRENT_REPO
 unset NCDB
@@ -131,13 +131,6 @@ debug_mode
 # Nextcloud 16 is required.
 lowest_compatible_nc 16
 
-# Check that this run on the PostgreSQL VM
-if ! is_this_installed postgresql-10
-then
-    print_text_in_color "$IRed" "This script is intended to be run on then PostgreSQL VM but PostgreSQL is not installed."
-    print_text_in_color "$IRed" "Aborting..."
-    exit 1
-fi
 
 # Set keyboard layout, important when changing passwords and such
 if [ "$KEYBOARD_LAYOUT" = "se" ]
